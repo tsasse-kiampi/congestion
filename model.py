@@ -3,12 +3,15 @@ from torch import nn
 from parameters import DIM, ATTENTION_BLOCKS, EMBEDDING_DIM
 
 
-class PatchEmbedding:
+class CongestionLearnableEmbedding:
+    """Tokenization of congestion"""
     pass
 
 
-class OriginalViT(nn.Module):
+class CongestionTransformer(nn.Module):
     def __init__(self,
+                 congestion_wrapper_encoder,
+                 congestion_wrapper_decoder,
                  congestion_size: int = DIM,
                  num_transformer_layers: int = ATTENTION_BLOCKS,
                  embedding_dim: int = EMBEDDING_DIM,
@@ -39,31 +42,42 @@ class OriginalViT(nn.Module):
                                                                               batch_first=True,
                                                                               norm_first=True) for _ in
                                                    range(num_transformer_layers)])
-
-        self.classifier = nn.Sequential(
-            nn.LayerNorm(normalized_shape=embedding_dim),
-            nn.Linear(in_features=embedding_dim,
-                      out_features=embedding_dim),
-            nn.GELU(),
-            nn.Linear(in_features=embedding_dim,
-                      out_features=num_classes)
-        )
+        
+        self.congestion_wrapper_encoder = congestion_wrapper_encoder()
+        self.congestion_wrapper_decoder = congestion_wrapper_decoder()
 
     def forward(self, x):
+
+        x = self.congestion_wrapper_encoder(x)
         batch_size = x.shape[0]
-
         class_token = self.class_embedding.expand(batch_size, -1, -1)
-
         x = self.patch_embedding(x)
-
         x = torch.cat((class_token, x), dim=1)
-
         x = self.position_embedding + x
-
         x = self.embedding_dropout(x)
-
         x = self.transformer_encoder(x)
+        x = self.congestion_wrapper_decoder(x)
 
-        x = self.classifier(x[:, 0])
+        return x
+    
+
+
+class CongestionModel(nn.Module):
+    def __init__(self,
+                 congestion_wrapper_encoder,
+                 congestion_decoder,
+                 congestion_wrapper_decoder,
+                 ):
+        super().__init__()
+
+        self.congestion_wrapper_encoder = congestion_wrapper_encoder()
+        self.congestion_wrapper_decoder = congestion_wrapper_decoder()
+        self.congestion_decoder = congestion_decoder()
+
+    def forward(self, x):
+
+        x = self.congestion_wrapper_encoder(x)
+        x = self.congestion_decoder(x)[-1]
+        x = self.congestion_wrapper_decoder(x)
 
         return x
