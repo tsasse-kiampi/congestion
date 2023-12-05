@@ -8,8 +8,7 @@ TODO IN GENERAL
 - think of appropriate adjacency in the network 
 
 TODO CURRENT
-
-- ohe-hot vectors labeling 
+ 
 - tokenization of congestion 
 - transformer decoder part
 - transformer decoder? number of boats part 
@@ -17,3 +16,13 @@ TODO CURRENT
 - simple decoder with wrappers 
 - congestion batches part 
 - debugging tools (congestion visualisation)
+- GPU config 
+- Efficient fast beautiful dataclasses
+
+
+Remarks: 
+
+Efficient Batching in Embeddings 
+Self-Dropout of MLP in Decoder? 
+Positional Encodings to Values? 
+ohe-hot vectors labeling to try?

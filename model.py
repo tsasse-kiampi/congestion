@@ -15,28 +15,47 @@ class CongestionLearnableEmbedding(nn.Module):
     def forward(self, input_tokens):
         return self.embeddings(input_tokens)
 
-class CongestionWrapper(nn.Module):
+class CongestionWrapperEncoder(nn.Module):
 
     def __init__(self, embeds, congestion_data):
         super().__init__()
         self.embeds = embeds()
-        
     pass #TODO
 
-        
+class CongestionWrapperDecoder(nn.Module):
 
-class CongestionTransformer(nn.Module):
+    def __init__(self,
+                 embeds: CongestionLearnableEmbedding,):
+        super().__init__()
+        self.embeds = embeds()
+
+class DecoderLinear(CongestionWrapperDecoder):
+    
+    def __init__(self, 
+                 embeds: CongestionLearnableEmbedding,
+                 embedding_dim=EMBEDDING_DIM,
+                 terminal_number=TERMINAL_DEFAULT_NUMBER):
+        super().__init__(embeds)
+
+        self.terminal_number = terminal_number
+        self.lin_layers =[nn.Linear(embedding_dim, terminal_number) for _ in range(terminal_number)]
+    
+    def forward(self, x, targets): 
+        congestions = torch.tensor(self.terminal_number)
+        for layer, number in enumerate(self.lin_layers):
+            congestions[number] = layer(x)
+
+
+class CongestionTransformerDecoder(nn.Module):
     def __init__(self,
                  terminal_number: int = TERMINAL_DEFAULT_NUMBER,
-                 congestion_size: int = DIM,
                  num_transformer_layers: int = ATTENTION_BLOCKS,
                  embedding_dim: int = EMBEDDING_DIM,
                  mlp_size: int = 3072,
                  num_heads: int = 12,
                  attn_dropout: float = 0,
-                 mlp_dropout: float = 0.1,
-                 embedding_dropout: float = 0.1,
-                 num_classes: int = 3):
+                #  mlp_dropout: float = 0.1, ?
+                 embedding_dropout: float = 0.1):
         super().__init__()
         self.terminal_number = terminal_number
 
@@ -65,17 +84,17 @@ class CongestionTransformer(nn.Module):
         x = self.position_embedding + x
         x = self.embedding_dropout(x)
         x = self.transformer_encoder(x)
-        
+
         return x
     
 
 
 class CongestionModel(nn.Module):
     def __init__(self,
-                 congestion_embedding,
-                 congestion_wrapper_encoder,
-                 congestion_decoder,
-                 congestion_wrapper_decoder,
+                 congestion_embedding: CongestionLearnableEmbedding,
+                 congestion_wrapper_encoder: CongestionWrapperEncoder,
+                 congestion_decoder: CongestionTransformerDecoder,
+                 congestion_wrapper_decoder: CongestionWrapperDecoder,
                  ):
         super().__init__()
 
@@ -83,10 +102,10 @@ class CongestionModel(nn.Module):
         self.congestion_wrapper_decoder = congestion_wrapper_decoder()
         self.congestion_decoder = congestion_decoder()
 
-    def forward(self, x):
+    def forward(self, x, targets=None):
 
         x = self.congestion_wrapper_encoder(x)
         x = self.congestion_decoder(x)[-1]
-        x = self.congestion_wrapper_decoder(x)
+        x, loss = self.congestion_wrapper_decoder(x, targets)
 
-        return x
+        return x, loss
