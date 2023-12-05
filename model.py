@@ -1,5 +1,8 @@
 import torch
 from torch import nn
+from torch.nn import functional
+from torch_geometric.nn import GATConv
+from torch_geometric.data import Data
 from parameters import DIM, ATTENTION_BLOCKS, EMBEDDING_DIM, MAX_CONGESTION, TERMINAL_DEFAULT_NUMBER
 
 
@@ -41,10 +44,19 @@ class DecoderLinear(CongestionWrapperDecoder):
         self.lin_layers =[nn.Linear(embedding_dim, terminal_number) for _ in range(terminal_number)]
     
     def forward(self, x, targets): 
+        loss = 0
+
         congestions = torch.tensor(self.terminal_number)
         for layer, number in enumerate(self.lin_layers):
-            congestions[number] = layer(x)
+            logits = layer(x)
+            if targets is not None:
+                loss += functional.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            congestions[number] = logits.max(1, keepdims=True)
 
+        if loss != 0:
+            loss /= self.terminal_number
+
+        return congestions, loss
 
 class CongestionTransformerDecoder(nn.Module):
     def __init__(self,

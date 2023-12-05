@@ -18,11 +18,12 @@ TODO CURRENT
 - debugging tools (congestion visualisation)
 - GPU config 
 - Efficient fast beautiful dataclasses
+- Generation from transformer 
 
 
-Remarks: 
+REMARKS (should be on Git issues): 
 
-Efficient Batching in Embeddings 
-Self-Dropout of MLP in Decoder? 
-Positional Encodings to Values? 
-ohe-hot vectors labeling to try?
+- Efficient Batching in Embeddings 
+- Self-Dropout of MLP in Decoder? 
+- Positional Encodings to Values? 
+- ohe-hot vectors labeling to try?
