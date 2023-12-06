@@ -20,15 +20,33 @@ class CongestionLearnableEmbedding(nn.Module):
 
 class CongestionWrapperEncoder(nn.Module):
 
-    def __init__(self, embeds, congestion_data):
+    def __init__(self,
+                embeddings,
+                congestion_data,
+                in_channels,
+                out_channels,
+                heads,
+                dropout):
+        
         super().__init__()
-        self.embeds = embeds()
-    pass #TODO
+
+        self.congestions, self.adjacency, self.meta = congestion_data 
+        self.congestions_embeddings = embeddings(**self.meta)
+
+        self.gat_conv = GATConv(in_channels, out_channels, heads=heads, dropout=dropout)
+
+
+    def forward(self, x):
+        x = self.congestions_embeddings(self.congestions, self.adjacency)
+
+        return torch.tensor([nn.Flatten(self.gat_conv(terminal)) for terminal in x])
+        
+
 
 class CongestionWrapperDecoder(nn.Module):
 
     def __init__(self,
-                 embeds: CongestionLearnableEmbedding,):
+                 embeds: CongestionLearnableEmbedding):
         super().__init__()
         self.embeds = embeds()
 
@@ -49,6 +67,40 @@ class DecoderLinear(CongestionWrapperDecoder):
         congestions = torch.tensor(self.terminal_number)
         for layer, number in enumerate(self.lin_layers):
             logits = layer(x)
+            if targets is not None:
+                loss += functional.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            congestions[number] = logits.max(1, keepdims=True)
+
+        if loss != 0:
+            loss /= self.terminal_number
+
+        return congestions, loss
+    
+class DecoderGAT(CongestionWrapperDecoder):
+    
+    def __init__(self, 
+                 embeds: CongestionLearnableEmbedding,
+                 in_channels,
+                 out_channels,
+                 heads,
+                 dropout,
+                 embedding_dim=EMBEDDING_DIM,
+                 terminal_number=TERMINAL_DEFAULT_NUMBER,
+                 ):
+        super().__init__(embeds)
+
+        self.terminal_number = terminal_number
+        self.gat_conv_decoder = GATConv(in_channels, out_channels, heads=heads, dropout=dropout)
+
+    
+    def forward(self, x, targets): 
+        loss = 0
+
+        x = x.view(-1, EMBEDDING_DIM, MAX_CONGESTION)
+        logits = layer(x)
+        congestions = torch.tensor(self.terminal_number)
+
+        for layer, number in enumerate(logits):
             if targets is not None:
                 loss += functional.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
             congestions[number] = logits.max(1, keepdims=True)

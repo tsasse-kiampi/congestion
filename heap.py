@@ -6,6 +6,7 @@ class LearnableTokens(nn.Module):
         super().__init__()
         self.embeddings = nn.Embedding(num_tokens, embedding_dim)
 
+
     def forward(self, input_tokens):
         return self.embeddings(input_tokens)
 

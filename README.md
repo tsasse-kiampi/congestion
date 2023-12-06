@@ -15,10 +15,12 @@ TODO CURRENT
 - part of adjacency matrix as a number of routes between terminals 
 - simple decoder with wrappers 
 - congestion batches part 
-- debugging tools (congestion visualisation)
+- debugging visualisation tools and (congestion visualisation)
 - GPU config 
 - Efficient fast beautiful dataclasses
 - Generation from transformer 
+- general pipeline for experience
+- general debugging for models
 
 
 REMARKS (should be on Git issues): 
