@@ -21,6 +21,7 @@ TODO CURRENT
 - Generation from transformer 
 - general pipeline for experience
 - general debugging for models
+- fine-tuning interface
 
 
 REMARKS (should be on Git issues): 
