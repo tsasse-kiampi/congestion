@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from torch_geometric.nn import GATConv
 from torch_geometric.data import Data
-from torch_geometric_temporal.nn import 
 
 
 edge_index = torch.tensor([[0, 1, 1, 2], [1, 0, 2, 1]], dtype=torch.long)
