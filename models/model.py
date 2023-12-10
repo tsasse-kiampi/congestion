@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import functional
 from torch_geometric.nn import GATConv
 from torch_geometric.data import Data
-from parameters import DIM, ATTENTION_BLOCKS, EMBEDDING_DIM, MAX_CONGESTION, TERMINAL_DEFAULT_NUMBER
+from parameters import DIM, ATTENTION_BLOCKS, EMBEDDING_DIM, MAX_CONGESTION_DIM, TERMINAL_DEFAULT_NUMBER
 
 
 class CongestionLearnableEmbedding(nn.Module):
@@ -11,7 +11,7 @@ class CongestionLearnableEmbedding(nn.Module):
         
         Each indice of embeddings represents congestion in hours
     """
-    def __init__(self, num_tokens=MAX_CONGESTION, embedding_dim=EMBEDDING_DIM):
+    def __init__(self, num_tokens=MAX_CONGESTION_DIM, embedding_dim=EMBEDDING_DIM):
         super().__init__()
         self.embeddings = nn.Embedding(num_tokens, embedding_dim)
 
@@ -23,6 +23,7 @@ class CongestionWrapperEncoder(nn.Module):
     def __init__(self,
                 embeddings,
                 congestion_data,
+                adjacency,
                 in_channels,
                 out_channels,
                 heads,
@@ -30,8 +31,8 @@ class CongestionWrapperEncoder(nn.Module):
         
         super().__init__()
 
-        self.congestions, self.adjacency, self.meta = congestion_data 
-        self.congestions_embeddings = embeddings(**self.meta)
+        self.congestions = congestion_data 
+        self.congestions_embeddings = embeddings(input_congestion_indices)
 
         self.gat_conv = GATConv(in_channels, out_channels, heads=heads, dropout=dropout)
 
@@ -41,7 +42,7 @@ class CongestionWrapperEncoder(nn.Module):
 
         return torch.tensor([nn.Flatten(self.gat_conv(terminal)) for terminal in x])
         
-
+              
 
 class CongestionWrapperDecoder(nn.Module):
 
