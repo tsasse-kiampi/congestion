@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torch.nn import functional
 from torch_geometric.nn import GATConv
-from torch_geometric.data import Data
+from torch_geometric.data import Data, Batch
 from parameters import DIM, ATTENTION_BLOCKS, CONGESTION_EMBEDDING_DIM, MAX_CONGESTION_DIM, DEFAULT_TERMINAL_NUMBER, MAX_CONGESTION, ATTENTION_HEADS, DROPOUT
 
 def congestion_to_index(congestion): #TODO maybe indices are precalculated in dataloader?
@@ -56,9 +56,12 @@ class CongestionWrapperEncoder(nn.Module):
 
         x = self.congestion_embeddings(x)
         x = x.view(-1, self.in_channels, self.out_channels)
-        x = self.gat_conv(x, adjacency)
-        x = x.view(batch_dim, days_num, -1)
+        x = list(x)
+        data_list = [Data(x=x_, edge_index=adjacency) for x_ in x] 
+        batch_loader = Batch.from_data_list(data_list)
 
+        x = self.gat_conv(batch_loader.x, edge_index=batch_loader.edge_index)
+        x = x.view(batch_dim, days_num, -1)
         return x 
 
 
