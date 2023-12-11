@@ -3,44 +3,69 @@ from torch import nn
 from torch.nn import functional
 from torch_geometric.nn import GATConv
 from torch_geometric.data import Data
-from parameters import DIM, ATTENTION_BLOCKS, EMBEDDING_DIM, MAX_CONGESTION_DIM, TERMINAL_DEFAULT_NUMBER
+from parameters import DIM, ATTENTION_BLOCKS, CONGESTION_EMBEDDING_DIM, MAX_CONGESTION_DIM, DEFAULT_TERMINAL_NUMBER, MAX_CONGESTION, ATTENTION_HEADS, DROPOUT
 
+def congestion_to_index(congestion): #TODO maybe indices are precalculated in dataloader?
+    return MAX_CONGESTION_DIM*round(congestion)/MAX_CONGESTION
 
 class CongestionLearnableEmbedding(nn.Module):
     r"""Tokenization of congestion
         
-        Each indice of embeddings represents congestion in hours
+        Each indice of embeddings represents congestion in hours (and minutes)
     """
-    def __init__(self, num_tokens=MAX_CONGESTION_DIM, embedding_dim=EMBEDDING_DIM):
+    def __init__(self, num_tokens=MAX_CONGESTION_DIM, embedding_dim=CONGESTION_EMBEDDING_DIM):
         super().__init__()
         self.embeddings = nn.Embedding(num_tokens, embedding_dim)
 
     def forward(self, input_tokens):
         return self.embeddings(input_tokens)
 
+
 class CongestionWrapperEncoder(nn.Module):
 
     def __init__(self,
                 embeddings,
-                congestion_data,
-                adjacency,
-                in_channels,
-                out_channels,
-                heads,
-                dropout):
+                in_channels=MAX_CONGESTION_DIM,
+                out_channels=DEFAULT_TERMINAL_NUMBER,
+                heads=ATTENTION_HEADS,
+                dropout=DROPOUT):
         
         super().__init__()
 
-        self.congestions = congestion_data 
-        self.congestions_embeddings = embeddings(input_congestion_indices)
+        self.congestion_embeddings = embeddings()
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
 
         self.gat_conv = GATConv(in_channels, out_channels, heads=heads, dropout=dropout)
 
 
-    def forward(self, x):
-        x = self.congestions_embeddings(self.congestions, self.adjacency)
+    def forward(self, x, adjacency):
+        # probably it's inefficient because not vectorized, look best RNN solutions 
 
-        return torch.tensor([nn.Flatten(self.gat_conv(terminal)) for terminal in x])
+        # x = self.congestion_embeddings(self.congestions)
+
+        # flattened_output = torch.stack([self.gat_conv(terminal, edge_dim=self.adjacency).view(-1) for terminal in x])
+        # return flattened_output
+
+        ##################
+        # yes, vector-parallelism is possible here
+        
+        batch_dim = x.size(0)
+        days_num = x.size(1)
+
+        x = self.congestion_embeddings(x)
+        x = x.view(-1, self.in_channels, self.out_channels)
+        x = self.gat_conv(x, adjacency)
+        x = x.view(batch_dim, days_num, -1)
+
+        return x 
+
+
+
+
+
+
         
               
 
@@ -55,8 +80,8 @@ class DecoderLinear(CongestionWrapperDecoder):
     
     def __init__(self, 
                  embeds: CongestionLearnableEmbedding,
-                 embedding_dim=EMBEDDING_DIM,
-                 terminal_number=TERMINAL_DEFAULT_NUMBER):
+                 embedding_dim=CONGESTION_EMBEDDING_DIM,
+                 terminal_number=DEFAULT_TERMINAL_NUMBER):
         super().__init__(embeds)
 
         self.terminal_number = terminal_number
@@ -85,8 +110,8 @@ class DecoderGAT(CongestionWrapperDecoder):
                  out_channels,
                  heads,
                  dropout,
-                 embedding_dim=EMBEDDING_DIM,
-                 terminal_number=TERMINAL_DEFAULT_NUMBER,
+                 embedding_dim=CONGESTION_EMBEDDING_DIM,
+                 terminal_number=DEFAULT_TERMINAL_NUMBER,
                  ):
         super().__init__(embeds)
 
@@ -97,7 +122,7 @@ class DecoderGAT(CongestionWrapperDecoder):
     def forward(self, x, targets): 
         loss = 0
 
-        x = x.view(-1, EMBEDDING_DIM, MAX_CONGESTION)
+        x = x.view(-1, CONGESTION_EMBEDDING_DIM, MAX_CONGESTION)
         logits = layer(x)
         congestions = torch.tensor(self.terminal_number)
 
@@ -113,9 +138,9 @@ class DecoderGAT(CongestionWrapperDecoder):
 
 class CongestionTransformerDecoder(nn.Module):
     def __init__(self,
-                 terminal_number: int = TERMINAL_DEFAULT_NUMBER,
+                 terminal_number: int = DEFAULT_TERMINAL_NUMBER,
                  num_transformer_layers: int = ATTENTION_BLOCKS,
-                 embedding_dim: int = EMBEDDING_DIM,
+                 embedding_dim: int = CONGESTION_EMBEDDING_DIM,
                  mlp_size: int = 3072,
                  num_heads: int = 12,
                  attn_dropout: float = 0,
