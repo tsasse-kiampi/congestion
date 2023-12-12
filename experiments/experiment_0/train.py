@@ -1,6 +1,6 @@
 from models.model import CongestionModel
 from train_dataloader import train_dataloader, test_dataloader
-from parameters import DEVICE
+from models.parameters import DEVICE
 
 import torch, train_interface
 
