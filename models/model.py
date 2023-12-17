@@ -57,15 +57,10 @@ class CongestionWrapperEncoder(nn.Module):
         days_num = x.size(1)
 
         x = self.congestion_embeddings(x)
-        print(x.size(), 'input')
         x = x.view(-1, self.node_number, self.out_channels)
-        print(x.size(), 'after input')
-        print(x.grad)
         x = list(x)
-        print(len(x), len(x[0]), 'squezzed')
         data_list = [Data(x=x_, edge_index=adjacency) for x_ in x] 
         batch_loader = Batch.from_data_list(data_list)
-        print(batch_loader)
         x = self.gat_conv(batch_loader.x, edge_index=batch_loader.edge_index)
         x = x.view(batch_dim, days_num, -1)
         return x 
@@ -181,7 +176,6 @@ class CongestionTransformerDecoder(nn.Module):
 
         return x
     
-
 
 class CongestionModel(nn.Module):
     def __init__(self,
