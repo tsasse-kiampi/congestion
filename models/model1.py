@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import functional
 from torch_geometric.nn import GATConv
 from torch_geometric.data import Data, Batch
-from parameters import DIM, ATTENTION_BLOCKS, CONGESTION_EMBEDDING_DIM, CONGESTION_EMBEDDING_CARDINAL, DEFAULT_TERMINAL_NUMBER, MAX_CONGESTION, ATTENTION_HEADS, DROPOUT
+from parameters import DIM, ATTENTION_BLOCKS, CONGESTION_EMBEDDING_DIM, CONGESTION_SPACE_CARDINAL, DEFAULT_TERMINAL_NUMBER, MAX_CONGESTION, ATTENTION_HEADS, DROPOUT
 
 def congestion_to_index(congestion): #TODO maybe indices are precalculated in dataloader?
     return DEFAULT_TERMINAL_NUMBER*round(congestion)/MAX_CONGESTION
@@ -13,7 +13,7 @@ class CongestionLearnableEmbedding(nn.Module):
         
         Each indice of embeddings represents congestion in hours (and minutes)
     """
-    def __init__(self, num_tokens=CONGESTION_EMBEDDING_CARDINAL, embedding_dim=CONGESTION_EMBEDDING_DIM):
+    def __init__(self, num_tokens=CONGESTION_SPACE_CARDINAL, embedding_dim=CONGESTION_EMBEDDING_DIM):
         super().__init__()
         self.embeddings = nn.Embedding(num_tokens, embedding_dim)
 

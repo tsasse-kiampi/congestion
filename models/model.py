@@ -3,28 +3,41 @@ from torch import nn
 from torch.nn import functional
 from torch_geometric.nn import GATConv
 from torch_geometric.data import Data, Batch
-from parameters import DIM, ATTENTION_BLOCKS, CONGESTION_EMBEDDING_DIM, CONGESTION_EMBEDDING_CARDINAL, DEFAULT_TERMINAL_NUMBER, MAX_CONGESTION, ATTENTION_HEADS, DROPOUT
+from parameters import DIM, ATTENTION_BLOCKS, CONGESTION_EMBEDDING_DIM, CONGESTION_SPACE_CARDINAL, DEFAULT_TERMINAL_NUMBER, MAX_CONGESTION, ATTENTION_HEADS, DROPOUT
 
 def congestion_to_index(congestion): #TODO maybe indices are precalculated in dataloader?
     return DEFAULT_TERMINAL_NUMBER*round(congestion)/MAX_CONGESTION
 
-class CongestionLearnableEmbedding(nn.Module):
+class CongestionNonLearnableEmbedding(nn.Module):
     r"""Tokenization of congestion
         
         Each indice of embeddings represents congestion in hours (and minutes)
     """
-    def __init__(self, num_tokens=CONGESTION_EMBEDDING_CARDINAL, embedding_dim=CONGESTION_EMBEDDING_DIM):
+    def __init__(self, num_tokens=CONGESTION_SPACE_CARDINAL, embedding_dim=CONGESTION_EMBEDDING_DIM):
         super().__init__()
         self.embeddings = nn.Embedding(num_tokens, embedding_dim)
 
     def forward(self, input_tokens):
         return self.embeddings(input_tokens)
+    
+class CustomLearnableEmbedding(nn.Module):
+    def __init__(self, num_embeddings, embedding_dim):
+        super(self).__init__()
+        
+        # Define a learnable embedding matrix
+        self.embedding = nn.Parameter(torch.randn(num_embeddings, embedding_dim))  #TODO different init
+        
+    def forward(self, input):
+        # Custom forward function using the embedding matrix
+        embedded = self.embedding[input]
+        return embedded
 
 
-class CongestionWrapperEncoder(nn.Module):
+
+class CongestionWrapperEncoder0(nn.Module):
 
     def __init__(self,
-                embeddings: CongestionLearnableEmbedding,
+                embeddings: CustomLearnableEmbedding,
                 node_number=DEFAULT_TERMINAL_NUMBER,
                 in_channels=CONGESTION_EMBEDDING_DIM,
                 out_channels=CONGESTION_EMBEDDING_DIM,
@@ -65,19 +78,64 @@ class CongestionWrapperEncoder(nn.Module):
         x = x.view(batch_dim, days_num, -1)
         return x 
 
+class CongestionWrapperEncoder1(nn.Module):
+
+    def __init__(self,
+                embeddings: CustomLearnableEmbedding,
+                node_number=DEFAULT_TERMINAL_NUMBER,
+                congestion_space_dimension=CONGESTION_SPACE_CARDINAL,
+                in_channels=CONGESTION_EMBEDDING_DIM,
+                out_channels=CONGESTION_EMBEDDING_DIM,
+                heads=ATTENTION_HEADS,
+                dropout=DROPOUT):
+        
+        super().__init__()
+
+        self.congestion_embeddings = embeddings(congestion_space_dimension, in_channels)
+
+        self.node_number = node_number
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.gat_conv = GATConv(in_channels, out_channels, heads=heads, dropout=dropout)
+
+
+    def forward(self, x, adjacency):
+        # probably it's inefficient because not vectorized, look best RNN solutions 
+
+        # x = self.congestion_embeddings(self.congestions)
+
+        # flattened_output = torch.stack([self.gat_conv(terminal, edge_dim=self.adjacency).view(-1) for terminal in x])
+        # return flattened_output
+
+        ##################
+        # yes, vector-parallelism is possible here
+        
+        batch_dim = x.size(0)
+        days_num = x.size(1)
+
+        x = self.congestion_embeddings(x)
+        x = x.view(-1, self.node_number, self.out_channels)
+        x = list(x)
+        data_list = [Data(x=x_, edge_index=adjacency) for x_ in x] 
+        batch_loader = Batch.from_data_list(data_list)
+        x = self.gat_conv(batch_loader.x, edge_index=batch_loader.edge_index)
+        x = x.view(batch_dim, days_num, -1)
+        return x 
+
 
 
 class CongestionWrapperDecoder(nn.Module):
 
     def __init__(self,
-                 embeds: CongestionLearnableEmbedding):
+                 embeds: CongestionNonLearnableEmbedding):
         super().__init__()
         self.embeds = embeds()
 
 class DecoderLinear(CongestionWrapperDecoder):
     
     def __init__(self, 
-                 embeds: CongestionLearnableEmbedding,
+                 embeds: CongestionNonLearnableEmbedding,
                  embedding_dim=CONGESTION_EMBEDDING_DIM,
                  terminal_number=DEFAULT_TERMINAL_NUMBER):
         super().__init__(embeds)
@@ -104,7 +162,7 @@ class DecoderLinear(CongestionWrapperDecoder):
 class DecoderGAT(CongestionWrapperDecoder):
     
     def __init__(self, 
-                 embeds: CongestionLearnableEmbedding,
+                 embeds: CongestionNonLearnableEmbedding,
                  in_channels,
                  out_channels,
                  heads,
@@ -179,7 +237,7 @@ class CongestionTransformerDecoder(nn.Module):
 
 class CongestionModel(nn.Module):
     def __init__(self,
-                 congestion_embedding: CongestionLearnableEmbedding,
+                 congestion_embedding: CongestionNonLearnableEmbedding,
                  congestion_wrapper_encoder: CongestionWrapperEncoder,
                  congestion_decoder: CongestionTransformerDecoder,
                 #  congestion_wrapper_decoder: CongestionWrapperDecoder,
