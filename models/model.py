@@ -22,7 +22,7 @@ class CongestionNonLearnableEmbedding(nn.Module):
     
 class CustomLearnableEmbedding(nn.Module):
     def __init__(self, num_embeddings, embedding_dim):
-        super(self).__init__()
+        super().__init__()
         
         # Define a learnable embedding matrix
         self.embedding = nn.Parameter(torch.randn(num_embeddings, embedding_dim))  #TODO different init
@@ -206,15 +206,15 @@ class CongestionTransformerDecoder(nn.Module):
         super().__init__()
         self.terminal_number = terminal_number
 
-        self.prediction_congestion_embedding = nn.Parameter(data=torch.randn(1, 1, embedding_dim),
+        self.prediction_congestion_embedding = nn.Parameter(data=torch.randn(1, 1, embedding_dim*terminal_number),
                                             requires_grad=True)
-
-        self.position_embedding = nn.Parameter(data=torch.randn(1, self.terminal_number + 1, embedding_dim),
+        print(self.terminal_number, 'lol')
+        self.position_embedding = nn.Parameter(data=torch.randn(1, self.terminal_number + 1, embedding_dim*terminal_number),
                                                requires_grad=True)
 
         self.embedding_dropout = nn.Dropout(p=embedding_dropout)
 
-        self.transformer_encoder = nn.Sequential(*[nn.TransformerDecoderLayer(d_model=embedding_dim,
+        self.transformer_encoder = nn.Sequential(*[nn.TransformerEncoderLayer(d_model=embedding_dim*terminal_number,
                                                                               nhead=num_heads,
                                                                               dim_feedforward=mlp_size,
                                                                               dropout=attn_dropout,
@@ -227,6 +227,7 @@ class CongestionTransformerDecoder(nn.Module):
 
         batch_size = x.shape[0]
         prediction_congestion_embedding = self.prediction_congestion_embedding.expand(batch_size, -1, -1)
+        print(prediction_congestion_embedding.shape, 'shape')
         x = torch.cat((prediction_congestion_embedding, x), dim=1)
         x = self.position_embedding + x
         x = self.embedding_dropout(x)
@@ -238,10 +239,11 @@ class CongestionTransformerDecoder(nn.Module):
 class CongestionModel(nn.Module):
     def __init__(self,
                  congestion_embedding: CongestionNonLearnableEmbedding,
-                 congestion_wrapper_encoder: CongestionWrapperEncoder,
+                 congestion_wrapper_encoder: CongestionWrapperEncoder1,
                  congestion_decoder: CongestionTransformerDecoder,
-                #  congestion_wrapper_decoder: CongestionWrapperDecoder,
+                 congestion_wrapper_decoder: CongestionWrapperDecoder,
                  num_nodes=DEFAULT_TERMINAL_NUMBER,
+                 congestion_space_dimension=CONGESTION_SPACE_CARDINAL,
                  embedding_dim=CONGESTION_EMBEDDING_DIM,
                  in_channels_wrapper_encoder=CONGESTION_EMBEDDING_DIM,
                  out_channels_wrapper_encoder=CONGESTION_EMBEDDING_DIM,
@@ -256,6 +258,7 @@ class CongestionModel(nn.Module):
 
         self.congestion_wrapper_encoder = congestion_wrapper_encoder(congestion_embedding,
                                                                      num_nodes,
+                                                                     congestion_space_dimension,
                                                                      in_channels_wrapper_encoder,
                                                                      out_channels_wrapper_encoder,
                                                                      num_heads_wrapper_encoder,
@@ -275,7 +278,9 @@ class CongestionModel(nn.Module):
         loss = 0
 
         x = self.congestion_wrapper_encoder(x, adjacency)
-        # x = self.congestion_decoder(x)[-1]
-        # x, loss = self.congestion_wrapper_decoder(x, targets)
+        x = self.congestion_decoder(x)[:,-1,:]
+
+        if targets is not None:
+            x, loss = self.congestion_wrapper_decoder(x, targets)
 
         return x, loss
