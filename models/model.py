@@ -127,10 +127,8 @@ class CongestionWrapperEncoder1(nn.Module):
 
 class CongestionWrapperDecoder(nn.Module):
 
-    def __init__(self,
-                 embeds: CongestionNonLearnableEmbedding):
+    def __init__(self):
         super().__init__()
-        self.embeds = embeds()
 
 class DecoderLinear(CongestionWrapperDecoder):
     
@@ -159,16 +157,17 @@ class DecoderLinear(CongestionWrapperDecoder):
 
         return congestions, loss
     
+
 class DecoderGAT(CongestionWrapperDecoder):
     
     def __init__(self, 
                  embeds: CongestionNonLearnableEmbedding,
-                 in_channels,
-                 out_channels,
-                 heads,
-                 dropout,
-                 embedding_dim=CONGESTION_EMBEDDING_DIM,
                  terminal_number=DEFAULT_TERMINAL_NUMBER,
+                 embedding_dim=CONGESTION_EMBEDDING_DIM,
+                 in_channels=CONGESTION_EMBEDDING_DIM,
+                 out_channels=CONGESTION_EMBEDDING_DIM,
+                 heads=ATTENTION_HEADS,
+                 dropout=DROPOUT,
                  ):
         super().__init__(embeds)
 
@@ -192,6 +191,65 @@ class DecoderGAT(CongestionWrapperDecoder):
             loss /= self.terminal_number
 
         return congestions, loss
+    
+
+
+class GATDecoder1(CongestionWrapperDecoder):
+
+    def __init__(self,
+                node_number=DEFAULT_TERMINAL_NUMBER,
+                congestion_space_dimension=CONGESTION_SPACE_CARDINAL,
+                in_channels=CONGESTION_EMBEDDING_DIM,
+                out_channels=CONGESTION_EMBEDDING_DIM,
+                heads=ATTENTION_HEADS,
+                dropout=DROPOUT):
+        
+        super().__init__()
+
+
+        self.node_number = node_number
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.gat_conv = GATConv(in_channels, out_channels, heads=heads, dropout=dropout)
+
+        self.linear_decoder = nn.Linear(out_channels, congestion_space_dimension)
+
+    def forward(self, x, adjacency, targets):
+        # probably it's inefficient because not vectorized, look best RNN solutions 
+
+        # x = self.congestion_embeddings(self.congestions)
+
+        # flattened_output = torch.stack([self.gat_conv(terminal, edge_dim=self.adjacency).view(-1) for terminal in x])
+        # return flattened_output
+
+        ##################
+        # yes, vector-parallelism is possible here
+        
+        loss = 0
+        batch_dim = x.size(0)
+
+        x = x.view(-1, self.node_number, self.out_channels)
+        print(x.shape, 'before graph decod')
+
+        x = list(x)
+        data_list = [Data(x=x_, edge_index=adjacency) for x_ in x] 
+        batch_loader = Batch.from_data_list(data_list)
+        x = self.gat_conv(batch_loader.x, edge_index=batch_loader.edge_index)
+        x = x.view(-1, self.node_number, self.out_channels)
+        print(x.shape, 'after graph decod')
+
+        x = self.linear_decoder(x)
+        print(x.shape, 'after linear decod')
+
+        congestions = x.max(2, keepdims=True)
+
+        if targets is not None:
+            loss += functional.cross_entropy(x.view(-1, x.size(-1)), targets.view(-1), ignore_index=-1)
+            print(functional.cross_entropy(x.view(-1, x.size(-1)), targets.view(-1), ignore_index=-1))
+        else: loss = torch.inf
+
+        return congestions, loss/batch_dim
 
 class CongestionTransformerDecoder(nn.Module):
     def __init__(self,
@@ -228,7 +286,7 @@ class CongestionTransformerDecoder(nn.Module):
         batch_size = x.shape[0]
         prediction_congestion_embedding = self.prediction_congestion_embedding.expand(batch_size, -1, -1)
         print(prediction_congestion_embedding.shape, 'shape')
-        x = torch.cat((prediction_congestion_embedding, x), dim=1)
+        x = torch.cat((x, prediction_congestion_embedding), dim=1) #TODO cat ord? 
         x = self.position_embedding + x
         x = self.embedding_dropout(x)
         x = self.transformer_encoder(x)
@@ -251,7 +309,7 @@ class CongestionModel(nn.Module):
                  dropout_wrapper_encoder=DROPOUT,
                  num_transformer_layers: int = ATTENTION_BLOCKS,
                  mlp_size: int = 3072,
-                 num_heads: int = 1,#12
+                 num_heads: int = 1, #12
                  attn_dropout: float = 0,
                  ):
         super().__init__()
@@ -271,16 +329,19 @@ class CongestionModel(nn.Module):
                                                      num_heads,
                                                      attn_dropout)
         
-        # self.congestion_wrapper_decoder = congestion_wrapper_decoder(num_nodes,
-        #                                                              )
+        self.congestion_wrapper_decoder = congestion_wrapper_decoder(num_nodes,
+                                                                     congestion_space_dimension,
+                                                                     in_channels_wrapper_encoder,
+                                                                     out_channels_wrapper_encoder,
+                                                                     num_heads_wrapper_encoder,
+                                                                     dropout_wrapper_encoder)
+
 
     def forward(self, x, adjacency, targets=None):
         loss = 0
 
         x = self.congestion_wrapper_encoder(x, adjacency)
         x = self.congestion_decoder(x)[:,-1,:]
-
-        if targets is not None:
-            x, loss = self.congestion_wrapper_decoder(x, targets)
+        x, loss = self.congestion_wrapper_decoder(x, adjacency, targets)
 
         return x, loss
